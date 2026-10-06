@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#143422" />
+      <stop offset="100%" stop-color="#0a1a11" />
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="compassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base background with rounded corners -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)" />
+  <rect width="496" height="496" x="8" y="8" rx="102" fill="none" stroke="#22543d" stroke-width="4" stroke-opacity="0.6" />
+
+  <!-- Outer Ring / Compass Motif -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#1c472e" stroke-width="6" stroke-dasharray="12 10" />
+  <circle cx="256" cy="256" r="195" fill="none" stroke="#34d399" stroke-width="2" stroke-opacity="0.25" />
+
+  <!-- Compass Cardinal Points -->
+  <polygon points="256,60 264,88 256,82 248,88" fill="url(#compassGrad)" />
+  <polygon points="256,452 264,424 256,430 248,424" fill="#059669" opacity="0.6" />
+  <polygon points="60,256 88,264 82,256 88,248" fill="#059669" opacity="0.6" />
+  <polygon points="452,256 424,264 430,256 424,248" fill="#059669" opacity="0.6" />
+
+  <!-- Central Botanical Sprout / Leaf & Mountain icon -->
+  <g transform="translate(256, 256)">
+    <!-- Mountain Silhouette -->
+    <path d="M-130,80 L-40,-50 L30,40 L70,-10 L130,80 Z" fill="#132c1e" opacity="0.8" />
+    <path d="M-40,-50 L0,-110 L50,-30 L30,40 Z" fill="#1b412b" opacity="0.9" />
+
+    <!-- Center Radiant Leaf -->
+    <path d="M0,70 C-90,30 -90,-90 0,-140 C90,-90 90,30 0,70 Z" fill="url(#leafGrad)" filter="url(#glow)" />
+    <!-- Leaf Center Rib -->
+    <path d="M0,-130 C-5,-60 -5,10 0,65" fill="none" stroke="#044d32" stroke-width="7" stroke-linecap="round" />
+    <path d="M0,-80 Q25,-95 45,-85" fill="none" stroke="#044d32" stroke-width="5" stroke-linecap="round" />
+    <path d="M0,-40 Q-25,-55 -45,-45" fill="none" stroke="#044d32" stroke-width="5" stroke-linecap="round" />
+    <path d="M0,0 Q25,-15 45,-5" fill="none" stroke="#044d32" stroke-width="5" stroke-linecap="round" />
+
+    <!-- Star / Sparkle AI indicator -->
+    <path d="M65,-115 L72,-100 L87,-93 L72,-86 L65,-71 L58,-86 L43,-93 L58,-100 Z" fill="url(#compassGrad)" filter="url(#glow)" />
+  </g>
+</svg>
