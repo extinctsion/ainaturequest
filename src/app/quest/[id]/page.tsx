@@ -113,8 +113,15 @@ export default function QuestBriefingPage({ params }: { params: Promise<{ id: st
       {/* Field Journal Briefing Header */}
       <div className="field-journal-card rounded-3xl p-6 sm:p-8 border border-stone-300 dark:border-stone-800 space-y-6 relative overflow-hidden">
         {/* Subtle decorative stamp */}
-        <div className="absolute top-4 right-4 text-[10px] uppercase font-mono tracking-widest px-2.5 py-1 rounded-md bg-stone-200/80 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700">
-          Field Dispatch #{quest.id.slice(0, 8)}
+        <div className="absolute top-4 right-4 flex items-center gap-1.5">
+          {quest.aiMetadata && (
+            <span className="text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-900/10 dark:bg-emerald-400/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30">
+              {quest.aiMetadata.provider === 'gemma' ? 'Gemma 3 4B' : 'Demo AI'}
+            </span>
+          )}
+          <span className="text-[10px] uppercase font-mono tracking-widest px-2.5 py-1 rounded-md bg-stone-200/80 dark:bg-stone-800 text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700">
+            Dispatch #{quest.id.slice(0, 8)}
+          </span>
         </div>
 
         <div className="space-y-3">

@@ -2,32 +2,30 @@
 
 import { useEffect, useState, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
   Camera,
   Upload,
   Mic,
-  MicOff,
-  FileText,
   CheckCircle2,
   Sparkles,
   Award,
   ChevronRight,
-  RefreshCw,
   AlertCircle,
   HelpCircle,
   Clock,
   Trash2,
   X,
-  Play,
   Square,
+  Layers,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import {
   getActiveQuestSession,
   saveEvidenceToSession,
   updateSessionStatus,
 } from '../../../../lib/storage/session';
-import { getAIProvider } from '../../../../lib/ai';
+import { getAIProvider, getActiveAIProviderType } from '../../../../lib/ai';
 import { DEMO_QUEST_DATABASE } from '../../../../lib/ai/demo-provider';
 import {
   Quest,
@@ -55,11 +53,12 @@ export default function EvidenceSubmissionPage({
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string>('');
   const [audioPermissionError, setAudioPermissionError] = useState<string | null>(null);
-  const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
 
   // Evaluation states
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [evaluationResult, setEvaluationResult] = useState<EvidenceResult | null>(null);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [activeProvider, setActiveProvider] = useState<'demo' | 'gemma' | 'custom'>('demo');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -67,6 +66,8 @@ export default function EvidenceSubmissionPage({
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    setActiveProvider(getActiveAIProviderType());
+
     let currentSession = getActiveQuestSession();
     if (!currentSession || currentSession.quest.id !== resolvedParams.id) {
       const fallbackQuest =
@@ -108,7 +109,7 @@ export default function EvidenceSubmissionPage({
     const reader = new FileReader();
     reader.onload = () => {
       setPhotoPreview(reader.result as string);
-      setCameraPermissionError(null);
+      setEvaluationError(null);
     };
     reader.readAsDataURL(file);
   };
@@ -159,6 +160,7 @@ export default function EvidenceSubmissionPage({
 
     setIsEvaluating(true);
     setEvaluationResult(null);
+    setEvaluationError(null);
 
     let evidenceData = '';
     if (currentObjective.evidenceType === 'photo') {
@@ -183,6 +185,7 @@ export default function EvidenceSubmissionPage({
         questId: quest.id,
         objective: currentObjective,
         evidence,
+        providerOverride: activeProvider,
       });
 
       // Save to session storage
@@ -194,6 +197,11 @@ export default function EvidenceSubmissionPage({
       setEvaluationResult(result);
     } catch (err) {
       console.error('Evidence evaluation failed:', err);
+      setEvaluationError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to evaluate evidence with AI. Check your connection or provider settings.'
+      );
     } finally {
       setIsEvaluating(false);
     }
@@ -206,6 +214,7 @@ export default function EvidenceSubmissionPage({
     setRecordedAudioUrl('');
     setAudioPermissionError(null);
     setEvaluationResult(null);
+    setEvaluationError(null);
 
     if (activeObjectiveIndex < quest.objectives.length - 1) {
       setActiveObjectiveIndex((prev) => prev + 1);
@@ -234,14 +243,21 @@ export default function EvidenceSubmissionPage({
     ? quest.objectives.every((obj) => session.evaluations[obj.id]?.completed)
     : false;
 
+  const isGemma = activeProvider === 'gemma';
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 py-2">
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
-            EVIDENCE VERIFICATION · STAGE 03
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+              EVIDENCE VERIFICATION · STAGE 03
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+              {isGemma ? 'Gemma Mode' : 'Demo AI Mode'}
+            </span>
+          </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 dark:text-stone-100">
             Submit Evidence
           </h1>
@@ -269,6 +285,7 @@ export default function EvidenceSubmissionPage({
                 setTextObservation('');
                 setRecordedAudioUrl('');
                 setAudioPermissionError(null);
+                setEvaluationError(null);
                 setEvaluationResult(session?.evaluations[obj.id] || null);
               }}
               className={`flex-1 min-w-[100px] p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
@@ -324,7 +341,7 @@ export default function EvidenceSubmissionPage({
           {currentObjective.evidenceType === 'photo' && (
             <div className="space-y-4">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 dark:text-stone-300">
-                Visual Evidence
+                Visual Evidence (Multimodal Analysis)
               </label>
 
               {photoPreview ? (
@@ -444,7 +461,7 @@ export default function EvidenceSubmissionPage({
                       <button
                         type="button"
                         onClick={() => setRecordedAudioUrl('')}
-                        className="text-stone-400 hover:text-red-500"
+                        className="text-stone-400 hover:text-red-500 cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -471,12 +488,12 @@ export default function EvidenceSubmissionPage({
               {/* Sound Description */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-stone-600 dark:text-stone-400">
-                  Sound Description & Perception
+                  Sound Description & Naturalist Notes
                 </label>
                 <textarea
                   value={textObservation}
                   onChange={(e) => setTextObservation(e.target.value)}
-                  placeholder="Describe the pitch, cadence, source (bird, rustling leaf, water), and direction..."
+                  placeholder="Describe the cadence, rhythm, source (bird, rustling leaf, water), and direction..."
                   rows={2}
                   className="w-full p-3 rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
@@ -493,7 +510,7 @@ export default function EvidenceSubmissionPage({
               <textarea
                 value={textObservation}
                 onChange={(e) => setTextObservation(e.target.value)}
-                placeholder="Log your exact field observations, interactions between living organisms, or hidden details..."
+                placeholder="Log your exact field observations, interactions between living organisms, or subtle natural details..."
                 rows={4}
                 className="w-full p-3.5 rounded-2xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-hidden leading-relaxed"
               />
@@ -501,22 +518,70 @@ export default function EvidenceSubmissionPage({
           )}
         </div>
 
-        {/* AI Evaluation Result Card */}
+        {/* Error Banner */}
+        {evaluationError && (
+          <div className="p-4 bg-red-950/20 border border-red-500/40 text-red-800 dark:text-red-200 rounded-2xl text-xs space-y-2 animate-in fade-in">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Evaluation Error</p>
+                <p className="font-mono mt-0.5">{evaluationError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSubmitObjectiveEvidence}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Retry Evaluation</span>
+            </button>
+          </div>
+        )}
+
+        {/* AI Evaluation Loading Card */}
         {isEvaluating && (
           <div className="p-5 rounded-2xl bg-emerald-950/10 border border-emerald-500/30 flex items-center justify-center gap-3 animate-pulse">
-            <Sparkles className="w-5 h-5 text-emerald-600 animate-spin" />
+            {isGemma ? (
+              <Layers className="w-5 h-5 text-emerald-600 animate-spin" />
+            ) : (
+              <Sparkles className="w-5 h-5 text-emerald-600 animate-spin" />
+            )}
             <div className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
-              Analyzing evidence... ✓ Evidence received
+              {isGemma
+                ? 'Gemma is examining your visual & field evidence...'
+                : 'Analyzing evidence... ✓ Field data received'}
             </div>
           </div>
         )}
 
+        {/* AI Evaluation Result Card */}
         {evaluationResult && !isEvaluating && (
-          <div className="p-5 rounded-2xl bg-emerald-900/10 dark:bg-emerald-950/30 border border-emerald-500/40 space-y-3 animate-in fade-in duration-300">
+          <div className={`p-5 rounded-2xl border space-y-3 animate-in fade-in duration-300 ${
+            evaluationResult.status === 'inconclusive'
+              ? 'bg-amber-950/20 border-amber-500/40 text-stone-800 dark:text-stone-200'
+              : evaluationResult.completed
+              ? 'bg-emerald-900/10 dark:bg-emerald-950/30 border-emerald-500/40'
+              : 'bg-red-950/20 border-red-500/40'
+          }`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-extrabold text-sm uppercase tracking-wide">
-                <CheckCircle2 className="w-5 h-5" />
-                <span>OBJECTIVE COMPLETE</span>
+              <div className="flex items-center gap-2 font-extrabold text-sm uppercase tracking-wide">
+                {evaluationResult.completed ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-emerald-700 dark:text-emerald-400">OBJECTIVE VERIFIED</span>
+                  </>
+                ) : evaluationResult.status === 'inconclusive' ? (
+                  <>
+                    <HelpCircle className="w-5 h-5 text-amber-500" />
+                    <span className="text-amber-600 dark:text-amber-400">INCONCLUSIVE EVIDENCE</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-red-500" />
+                    <span className="text-red-600 dark:text-red-400">NOT VERIFIED</span>
+                  </>
+                )}
               </div>
               <div className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                 <Award className="w-4 h-4" />
@@ -530,14 +595,16 @@ export default function EvidenceSubmissionPage({
 
             {evaluationResult.naturalistInsight && (
               <p className="text-xs text-stone-600 dark:text-stone-400 italic bg-stone-200/50 dark:bg-stone-900/50 p-3 rounded-xl border border-stone-300/50 dark:border-stone-800">
-                {evaluationResult.naturalistInsight}
+                🌿 {evaluationResult.naturalistInsight}
               </p>
             )}
 
-            <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pt-1">
-              <span>Demo AI Evaluation Confidence</span>
+            <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pt-1 border-t border-stone-200 dark:border-stone-800">
+              <span className="font-semibold">
+                {isGemma ? 'Gemma 3 4B Naturalist Evaluation' : 'Demo AI Evaluation'}
+              </span>
               <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {Math.round(evaluationResult.confidence * 100)}%
+                Confidence: {Math.round(evaluationResult.confidence * 100)}%
               </span>
             </div>
           </div>
@@ -552,8 +619,8 @@ export default function EvidenceSubmissionPage({
               onClick={handleSubmitObjectiveEvidence}
               className="w-full py-3.5 px-6 bg-emerald-800 hover:bg-emerald-900 text-white font-extrabold text-sm sm:text-base rounded-2xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition disabled:opacity-50"
             >
-              <Sparkles className="w-4 h-4 text-emerald-300" />
-              <span>Verify & Evaluate Objective</span>
+              {isGemma ? <Layers className="w-4 h-4 text-emerald-300" /> : <Sparkles className="w-4 h-4 text-emerald-300" />}
+              <span>{isGemma ? 'Evaluate with Gemma 3' : 'Verify & Evaluate Objective'}</span>
             </button>
           ) : (
             <>

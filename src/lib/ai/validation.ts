@@ -1,4 +1,4 @@
-import { Quest, QuestObjective, EvidenceResult } from '../types/quest';
+import { Quest, QuestObjective, EvidenceResult, AdventureType, DifficultyLevel } from '../types/quest';
 
 export class AIValidationError extends Error {
   constructor(message: string) {
@@ -8,27 +8,76 @@ export class AIValidationError extends Error {
 }
 
 /**
- * Validates a Quest object returned from any AI Provider
+ * Extracts and parses JSON from raw LLM text output.
+ * Handles markdown code blocks, conversational preambles, and raw JSON strings.
  */
-export function validateQuest(data: unknown): Quest {
+export function extractJsonFromModelOutput<T = unknown>(rawOutput: string): T {
+  if (!rawOutput || typeof rawOutput !== 'string') {
+    throw new AIValidationError('Empty or non-string response received from AI model');
+  }
+
+  const trimmed = rawOutput.trim();
+
+  // 1. Try direct JSON parse first
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    // Continue to pattern extraction
+  }
+
+  // 2. Try markdown code block regex (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim()) as T;
+    } catch {
+      // Continue to bracket matching
+    }
+  }
+
+  // 3. Find outermost JSON object or array ({ ... } or [ ... ])
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = trimmed.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // Failed to parse substring
+    }
+  }
+
+  throw new AIValidationError(
+    `Failed to extract valid JSON from model output: ${trimmed.slice(0, 120)}...`
+  );
+}
+
+/**
+ * Validates a Quest object returned from any AI Provider.
+ * Normalizes missing IDs, difficulty bounds, and phone-away times.
+ */
+export function validateQuest(data: unknown, defaultMetadata?: Quest['aiMetadata']): Quest {
   if (!data || typeof data !== 'object') {
     throw new AIValidationError('Quest response must be an object');
   }
 
   const q = data as Partial<Quest>;
 
-  if (!q.id || typeof q.id !== 'string') {
-    throw new AIValidationError('Quest must have a valid string id');
+  const id = typeof q.id === 'string' && q.id.trim()
+    ? q.id.trim()
+    : `quest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+  if (!q.title || typeof q.title !== 'string' || !q.title.trim()) {
+    throw new AIValidationError('Quest must have a non-empty title');
   }
-  if (!q.title || typeof q.title !== 'string') {
-    throw new AIValidationError('Quest must have a valid title');
+  if (!q.description || typeof q.description !== 'string' || !q.description.trim()) {
+    throw new AIValidationError('Quest must have a non-empty description');
   }
-  if (!q.description || typeof q.description !== 'string') {
-    throw new AIValidationError('Quest must have a valid description');
-  }
-  if (typeof q.durationMinutes !== 'number' || q.durationMinutes <= 0) {
-    throw new AIValidationError('Quest durationMinutes must be a positive number');
-  }
+
+  const durationMinutes = typeof q.durationMinutes === 'number' && q.durationMinutes > 0
+    ? Math.round(q.durationMinutes)
+    : 30;
+
   if (!Array.isArray(q.objectives) || q.objectives.length === 0) {
     throw new AIValidationError('Quest must have at least one objective');
   }
@@ -39,67 +88,113 @@ export function validateQuest(data: unknown): Quest {
       throw new AIValidationError(`Objective at index ${index} is invalid`);
     }
     const o = obj as Partial<QuestObjective>;
-    if (!o.id || typeof o.id !== 'string') {
-      throw new AIValidationError(`Objective at index ${index} missing valid id`);
-    }
-    if (!o.title || typeof o.title !== 'string') {
+    const objId = typeof o.id === 'string' && o.id.trim()
+      ? o.id.trim()
+      : `obj_${index + 1}_${Math.random().toString(36).substring(2, 6)}`;
+
+    if (!o.title || typeof o.title !== 'string' || !o.title.trim()) {
       throw new AIValidationError(`Objective at index ${index} missing valid title`);
     }
-    if (!o.description || typeof o.description !== 'string') {
+    if (!o.description || typeof o.description !== 'string' || !o.description.trim()) {
       throw new AIValidationError(`Objective at index ${index} missing valid description`);
     }
-    const evidenceType = o.evidenceType || 'any';
-    if (!['photo', 'audio', 'text', 'any'].includes(evidenceType)) {
-      throw new AIValidationError(`Objective "${o.title}" has unsupported evidence type: ${evidenceType}`);
-    }
+
+    const rawEvidenceType = (o.evidenceType || 'any').toLowerCase().trim();
+    const evidenceType = ['photo', 'audio', 'text', 'any'].includes(rawEvidenceType)
+      ? (rawEvidenceType as QuestObjective['evidenceType'])
+      : 'photo';
 
     return {
-      id: o.id,
-      title: o.title,
-      description: o.description,
-      evidenceType: evidenceType as QuestObjective['evidenceType'],
-      xp: typeof o.xp === 'number' && o.xp > 0 ? o.xp : 50,
-      hint: o.hint || undefined,
-      promptGuidance: o.promptGuidance || undefined,
+      id: objId,
+      title: o.title.trim(),
+      description: o.description.trim(),
+      evidenceType,
+      xp: typeof o.xp === 'number' && o.xp > 0 ? Math.round(o.xp) : 50,
+      hint: typeof o.hint === 'string' && o.hint.trim() ? o.hint.trim() : undefined,
+      promptGuidance: typeof o.promptGuidance === 'string' && o.promptGuidance.trim()
+        ? o.promptGuidance.trim()
+        : undefined,
     };
   });
 
-  const totalXp = q.totalXp && typeof q.totalXp === 'number'
-    ? q.totalXp
+  const totalXp = typeof q.totalXp === 'number' && q.totalXp > 0
+    ? Math.round(q.totalXp)
     : validatedObjectives.reduce((sum, obj) => sum + obj.xp, 0);
 
+  const rawDifficulty = typeof q.difficulty === 'number' ? q.difficulty : 3;
+  const difficulty = Math.min(5, Math.max(1, Math.round(rawDifficulty)));
+
+  let difficultyLabel: DifficultyLevel = 'moderate';
+  if (difficulty <= 2) difficultyLabel = 'easy';
+  else if (difficulty >= 4) difficultyLabel = 'challenging';
+
+  const category = (typeof q.category === 'string' ? q.category.toLowerCase().trim() : 'nature') as AdventureType;
+
+  const phoneAwayMinutes = typeof q.phoneAwayMinutes === 'number' && q.phoneAwayMinutes > 0
+    ? Math.min(durationMinutes, Math.round(q.phoneAwayMinutes))
+    : Math.max(5, durationMinutes - 3);
+
   return {
-    id: q.id,
-    title: q.title,
-    subtitle: q.subtitle || 'Outdoor Naturalist Mission',
-    description: q.description,
-    durationMinutes: q.durationMinutes,
-    difficulty: typeof q.difficulty === 'number' ? Math.min(5, Math.max(1, q.difficulty)) : 3,
-    difficultyLabel: q.difficultyLabel || 'moderate',
-    category: q.category || 'nature',
+    id,
+    title: q.title.trim(),
+    subtitle: typeof q.subtitle === 'string' && q.subtitle.trim() ? q.subtitle.trim() : 'Field Naturalist Expedition',
+    description: q.description.trim(),
+    durationMinutes,
+    difficulty,
+    difficultyLabel: q.difficultyLabel || difficultyLabel,
+    category,
     objectives: validatedObjectives,
     totalXp,
-    phoneAwayMinutes: typeof q.phoneAwayMinutes === 'number' ? q.phoneAwayMinutes : Math.max(5, q.durationMinutes - 2),
-    safetyTip: q.safetyTip || 'Stay on safe paths, respect wildlife, and do not ingest wild plants.',
+    phoneAwayMinutes,
+    safetyTip: typeof q.safetyTip === 'string' && q.safetyTip.trim()
+      ? q.safetyTip.trim()
+      : 'Stay on safe/public paths, respect wildlife distance, and never touch or ingest unknown wild plants.',
+    aiMetadata: q.aiMetadata || defaultMetadata,
   };
 }
 
 /**
- * Validates an EvidenceResult object returned from any AI Provider
+ * Validates an EvidenceResult object returned from any AI Provider.
+ * Calibrates confidence bounds and standardizes evaluation status.
  */
-export function validateEvidenceResult(data: unknown, fallbackObjectiveId: string): EvidenceResult {
+export function validateEvidenceResult(
+  data: unknown,
+  fallbackObjectiveId: string,
+  modelName?: string
+): EvidenceResult {
   if (!data || typeof data !== 'object') {
     throw new AIValidationError('Evidence result must be an object');
   }
 
   const res = data as Partial<EvidenceResult>;
 
+  const completed = typeof res.completed === 'boolean' ? res.completed : true;
+
+  // Clamp confidence between 0.0 and 1.0
+  const rawConfidence = typeof res.confidence === 'number' ? res.confidence : 0.88;
+  const confidence = Math.min(1, Math.max(0, parseFloat(rawConfidence.toFixed(2))));
+
+  // Determine status (completed | incomplete | inconclusive)
+  let status: 'completed' | 'incomplete' | 'inconclusive' = 'completed';
+  if (res.status && ['completed', 'incomplete', 'inconclusive'].includes(res.status)) {
+    status = res.status;
+  } else if (!completed) {
+    status = confidence < 0.4 ? 'inconclusive' : 'incomplete';
+  }
+
   return {
     objectiveId: res.objectiveId || fallbackObjectiveId,
-    completed: typeof res.completed === 'boolean' ? res.completed : true,
-    confidence: typeof res.confidence === 'number' ? Math.min(1, Math.max(0, res.confidence)) : 0.90,
-    feedback: res.feedback || 'Observation confirmed and logged to your field log.',
-    xpAwarded: typeof res.xpAwarded === 'number' ? res.xpAwarded : 50,
-    naturalistInsight: res.naturalistInsight || 'Great field observation technique!',
+    completed: status === 'completed',
+    confidence,
+    status,
+    feedback: typeof res.feedback === 'string' && res.feedback.trim()
+      ? res.feedback.trim()
+      : 'Observation successfully recorded and verified by AI Naturalist.',
+    xpAwarded: typeof res.xpAwarded === 'number' && res.xpAwarded >= 0 ? Math.round(res.xpAwarded) : 50,
+    naturalistInsight: typeof res.naturalistInsight === 'string' && res.naturalistInsight.trim()
+      ? res.naturalistInsight.trim()
+      : 'Great field observation technique!',
+    model: modelName || res.model,
   };
 }
+

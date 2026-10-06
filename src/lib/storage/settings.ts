@@ -32,6 +32,7 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
     const current = getSettings();
     const updated = { ...current, ...settings };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event('settings-changed'));
     return updated;
   } catch (err) {
     console.error('Failed to save settings:', err);
@@ -46,5 +47,7 @@ export function resetAllData(): void {
   resetProgress();
   if (typeof window !== 'undefined') {
     localStorage.removeItem(SETTINGS_KEY);
+    window.dispatchEvent(new Event('settings-changed'));
   }
 }
+

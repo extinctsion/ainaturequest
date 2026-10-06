@@ -1,44 +1,102 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Settings,
   Cpu,
   Trash2,
-  RefreshCw,
-  ShieldCheck,
   Sparkles,
   Info,
   ExternalLink,
   CheckCircle,
   AlertTriangle,
   Code2,
-  TreePine,
   Layers,
+  Activity,
+  Terminal,
+  Server,
+  RefreshCw,
 } from 'lucide-react';
 import {
   getSettings,
   saveSettings,
   resetAllData,
+  DEFAULT_SETTINGS,
 } from '../../lib/storage/settings';
 import { clearJournal } from '../../lib/storage/journal';
 import { clearQuestHistory } from '../../lib/storage/quests';
 import { resetProgress } from '../../lib/storage/progress';
-import { clearActiveQuestSession } from '../../lib/storage/session';
-import { AppSettings } from '../../lib/types/quest';
+import { AppSettings, AIHealthStatus } from '../../lib/types/quest';
 
 export default function SettingsPage() {
-  const [settings, setSettingsState] = useState<AppSettings | null>(null);
+  const [settings, setSettingsState] = useState<AppSettings>(() => {
+    if (typeof window !== 'undefined') {
+      return getSettings();
+    }
+    return DEFAULT_SETTINGS;
+  });
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showConfirmResetAll, setShowConfirmResetAll] = useState<boolean>(false);
 
-  useEffect(() => {
-    setSettingsState(getSettings());
+  // Gemma connection test state
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const [healthStatus, setHealthStatus] = useState<AIHealthStatus | null>(null);
+
+  const checkHealth = useCallback(async () => {
+    setIsTestingConnection(true);
+    try {
+      const res = await fetch('/api/ai/health', { method: 'GET' });
+      const data = (await res.json()) as AIHealthStatus;
+      setHealthStatus(data);
+    } catch (err) {
+      setHealthStatus({
+        ok: false,
+        provider: 'gemma',
+        model: 'gemma3:4b',
+        latencyMs: 0,
+        message: err instanceof Error ? err.message : 'Failed to reach health endpoint',
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
   }, []);
+
+  useEffect(() => {
+    // Initial sync
+    const current = getSettings();
+    setSettingsState(current);
+
+    // If initial provider is gemma, run health check
+    if (current.aiProvider === 'gemma') {
+      checkHealth();
+    }
+
+    const handleSettingsChanged = () => {
+      setSettingsState(getSettings());
+    };
+
+    window.addEventListener('settings-changed', handleSettingsChanged);
+    return () => {
+      window.removeEventListener('settings-changed', handleSettingsChanged);
+    };
+  }, [checkHealth]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleProviderChange = (provider: 'demo' | 'gemma') => {
+    const updated = saveSettings({ aiProvider: provider });
+    setSettingsState(updated);
+    showToast(`AI Provider switched to ${provider === 'gemma' ? 'Google Gemma (Open-Weight)' : 'Demo AI'}.`);
+
+    if (provider === 'gemma') {
+      checkHealth();
+    } else {
+      setHealthStatus(null);
+    }
   };
 
   const handleClearJournal = () => {
@@ -62,7 +120,7 @@ export default function SettingsPage() {
     showToast('All local application data reset successfully.');
   };
 
-  if (!settings) return null;
+  const configuredModel = 'Gemma 3 4B (gemma3:4b)';
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 py-2 sm:py-4">
@@ -89,46 +147,222 @@ export default function SettingsPage() {
 
       {/* AI Provider Architecture Section */}
       <section className="field-journal-card rounded-3xl p-6 sm:p-8 border border-stone-300 dark:border-stone-800 space-y-6">
-        <div className="flex items-center gap-2 text-stone-900 dark:text-stone-100">
-          <Cpu className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          <h2 className="text-lg font-bold">AI Provider Configuration</h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-stone-900 dark:text-stone-100">
+            <Cpu className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <h2 className="text-lg font-bold">AI Provider Selection</h2>
+          </div>
+          <span className="text-xs font-bold uppercase px-2.5 py-1 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+            {settings.aiProvider === 'gemma' ? 'Gemma Active' : 'Demo AI Active'}
+          </span>
         </div>
 
-        <div className="space-y-3">
-          {/* Demo AI Card */}
-          <div className="p-4 rounded-2xl border-2 border-emerald-600 bg-emerald-900/10 dark:bg-emerald-950/30 space-y-2">
+        {/* Provider Switcher Selector Buttons */}
+        <div className="grid grid-cols-2 gap-3 p-1.5 bg-stone-200/70 dark:bg-stone-900 rounded-2xl border border-stone-300 dark:border-stone-800">
+          <button
+            type="button"
+            onClick={() => handleProviderChange('demo')}
+            className={`py-3 px-4 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              settings.aiProvider === 'demo'
+                ? 'bg-emerald-800 text-white shadow-md scale-[1.01]'
+                : 'text-stone-700 dark:text-stone-300 hover:text-stone-950 dark:hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Demo AI</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleProviderChange('gemma')}
+            className={`py-3 px-4 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              settings.aiProvider === 'gemma'
+                ? 'bg-emerald-800 text-white shadow-md scale-[1.01]'
+                : 'text-stone-700 dark:text-stone-300 hover:text-stone-950 dark:hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Gemma (Local AI)</span>
+          </button>
+        </div>
+
+        {/* Conditional Provider Information Card */}
+        {settings.aiProvider === 'demo' ? (
+          /* DEMO AI CARD */
+          <div className="p-5 rounded-2xl border-2 border-emerald-600/60 bg-emerald-900/10 dark:bg-emerald-950/30 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="font-extrabold text-stone-900 dark:text-stone-100 text-sm">
-                  Demo AI (Deterministic Open Mode)
-                </span>
+                <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
+                  Demo AI
+                </h3>
               </div>
               <span className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
-                Active Provider
+                Zero-Config Default
               </span>
             </div>
-            <p className="text-xs text-stone-600 dark:text-stone-300 leading-relaxed">
-              Currently using deterministic demo responses for seamless zero-key evaluation. Provides authentic naturalist feedback, confidence scoring, and XP progression.
-            </p>
-          </div>
 
-          {/* Gemma Open-Weight Card */}
-          <div className="p-4 rounded-2xl border border-stone-300 dark:border-stone-800 bg-stone-100/60 dark:bg-stone-900/40 space-y-2 opacity-80">
+            <p className="text-xs sm:text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
+              Deterministic responses tailored for outdoor naturalist exploration. Provides authentic naturalist feedback, confidence calibration, and full XP progression.
+            </p>
+
+            <div className="pt-1 flex flex-wrap items-center gap-3 text-xs font-semibold text-stone-600 dark:text-stone-400">
+              <span className="inline-flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Works without an API key
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> 100% Offline Compatible
+              </span>
+            </div>
+          </div>
+        ) : (
+          /* GEMMA OPEN-WEIGHT CARD */
+          <div className="p-5 rounded-2xl border-2 border-emerald-600/70 bg-emerald-950/20 dark:bg-stone-900/80 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-stone-500" />
-                <span className="font-bold text-stone-800 dark:text-stone-200 text-sm">
-                  Google Gemma (Open-Weight Model)
-                </span>
+                <Layers className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
+                  Gemma
+                </h3>
               </div>
-              <span className="px-2.5 py-0.5 bg-stone-300 dark:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-full text-[10px] font-bold uppercase">
-                Staged / Not Configured
+              <span className="px-2.5 py-0.5 bg-emerald-700 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
+                Open-Weight Local AI
               </span>
             </div>
-            <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
-              To connect a live open-weight Gemma model, configure <code className="bg-stone-200 dark:bg-stone-800 px-1 py-0.5 rounded text-emerald-600">AI_PROVIDER=gemma</code> and <code className="bg-stone-200 dark:bg-stone-800 px-1 py-0.5 rounded text-emerald-600">AI_API_URL</code> in your <code className="text-stone-700 dark:text-stone-300 font-mono">.env</code> file. The UI layer communicates exclusively through the <code className="text-stone-700 dark:text-stone-300 font-mono">AIProvider</code> interface.
+
+            <p className="text-xs sm:text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
+              Runs through your configured Gemma endpoint with real open-weight model inference for quest generation and multimodal evidence evaluation.
             </p>
+
+            {/* Model & Endpoint Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+              <div className="p-3 bg-stone-100 dark:bg-stone-800/80 rounded-xl border border-stone-200 dark:border-stone-700 space-y-1">
+                <span className="text-stone-500 font-bold uppercase tracking-wider text-[10px] block">
+                  Configured Model
+                </span>
+                <span className="font-extrabold text-stone-900 dark:text-stone-100 text-sm">
+                  {configuredModel}
+                </span>
+              </div>
+
+              <div className="p-3 bg-stone-100 dark:bg-stone-800/80 rounded-xl border border-stone-200 dark:border-stone-700 space-y-1">
+                <span className="text-stone-500 font-bold uppercase tracking-wider text-[10px] block">
+                  Connection Status
+                </span>
+                <div className="flex items-center gap-2">
+                  {isTestingConnection ? (
+                    <span className="flex items-center gap-1.5 font-bold text-amber-600">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Testing connection...</span>
+                    </span>
+                  ) : healthStatus?.ok ? (
+                    <span className="flex items-center gap-1.5 font-extrabold text-emerald-600 dark:text-emerald-400">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>● Connected ({healthStatus.latencyMs}ms)</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 font-extrabold text-amber-600 dark:text-amber-400">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span>● Not connected</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Health Test Result Output */}
+            {healthStatus && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs font-semibold leading-relaxed ${
+                  healthStatus.ok
+                    ? 'bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
+                    : 'bg-amber-950/20 text-amber-800 dark:text-amber-300 border-amber-500/40'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  {healthStatus.ok ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <p>{healthStatus.message}</p>
+                    {healthStatus.availableModels && healthStatus.availableModels.length > 0 && (
+                      <p className="text-[11px] opacity-80">
+                        Installed in Ollama: {healthStatus.availableModels.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Test Connection Button */}
+            <div>
+              <button
+                type="button"
+                disabled={isTestingConnection}
+                onClick={checkHealth}
+                className="py-2.5 px-4 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                <Activity className="w-4 h-4 text-emerald-300" />
+                <span>{isTestingConnection ? 'Testing...' : 'Test Gemma Connection'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Developer Setup Section */}
+        <div className="p-5 bg-stone-100 dark:bg-stone-900/70 rounded-2xl border border-stone-300 dark:border-stone-800 space-y-3">
+          <div className="flex items-center gap-2 text-stone-900 dark:text-stone-100">
+            <Terminal className="w-4 h-4 text-emerald-600" />
+            <h4 className="font-extrabold text-sm uppercase tracking-wider">
+              Developer Gemma Setup Guide
+            </h4>
+          </div>
+
+          <div className="space-y-2 text-xs text-stone-700 dark:text-stone-300 font-mono">
+            <div className="flex items-start gap-2">
+              <span className="w-5 h-5 rounded-md bg-stone-200 dark:bg-stone-800 flex items-center justify-center font-bold text-stone-700 dark:text-stone-300 shrink-0">
+                1
+              </span>
+              <span className="pt-0.5 font-sans">
+                Install Ollama from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-emerald-600 font-bold underline">ollama.com</a>
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <span className="w-5 h-5 rounded-md bg-stone-200 dark:bg-stone-800 flex items-center justify-center font-bold text-stone-700 dark:text-stone-300 shrink-0">
+                2
+              </span>
+              <div className="space-y-1">
+                <span className="pt-0.5 font-sans block">Pull the recommended multimodal model:</span>
+                <code className="block p-2 rounded-lg bg-stone-900 text-emerald-400 font-mono text-[11px]">
+                  ollama pull gemma3:4b
+                </code>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <span className="w-5 h-5 rounded-md bg-stone-200 dark:bg-stone-800 flex items-center justify-center font-bold text-stone-700 dark:text-stone-300 shrink-0">
+                3
+              </span>
+              <div className="space-y-1">
+                <span className="pt-0.5 font-sans block">Start Ollama service:</span>
+                <code className="block p-2 rounded-lg bg-stone-900 text-emerald-400 font-mono text-[11px]">
+                  ollama serve
+                </code>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <span className="w-5 h-5 rounded-md bg-stone-200 dark:bg-stone-800 flex items-center justify-center font-bold text-stone-700 dark:text-stone-300 shrink-0">
+                4
+              </span>
+              <span className="pt-0.5 font-sans">
+                Set <code className="bg-stone-200 dark:bg-stone-800 px-1 py-0.5 rounded text-emerald-600 font-bold">AI_PROVIDER=gemma</code> in your <code className="font-mono">.env.local</code> or switch provider toggle above.
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -141,7 +375,7 @@ export default function SettingsPage() {
         </div>
 
         <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-          AI Nature Quest does not use cookies, user tracking, or remote databases. All quest history, photos, and journal entries are stored strictly inside your browser&apos;s local storage.
+          AI Nature Quest does not use cookies, user tracking, or remote tracking databases. All quest history, photos, and journal entries are stored strictly inside your browser&apos;s local storage.
         </p>
 
         <div className="space-y-3 pt-1">
@@ -248,9 +482,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="pt-2 flex items-center justify-between text-xs text-stone-500 border-t border-stone-200 dark:border-stone-800">
-          <span>Version 1.0.0 (Production Build)</span>
+          <span>Version 1.1.0 (Gemma 3 Edition)</span>
           <a
-            href="https://github.com"
+            href="https://github.com/extinctsion/ainaturequest"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 font-bold text-stone-700 dark:text-stone-300 hover:text-emerald-600"
