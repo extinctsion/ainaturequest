@@ -129,6 +129,10 @@ export default function QuestCompletePage({
         xp: obj.xp,
         category: quest.category,
         location: 'Field Expedition Route',
+        aiMetadata: quest.aiMetadata || {
+          provider: evaluation?.model ? 'gemma' : 'demo',
+          model: evaluation?.model || 'demo',
+        },
       };
     });
 

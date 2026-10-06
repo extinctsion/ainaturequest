@@ -34,6 +34,11 @@ export interface Quest {
   totalXp: number;
   phoneAwayMinutes: number;
   safetyTip?: string;
+  aiMetadata?: {
+    provider: 'demo' | 'gemma' | 'custom' | string;
+    model: string;
+    generatedAt?: number;
+  };
 }
 
 export interface QuestRequest {
@@ -42,6 +47,7 @@ export interface QuestRequest {
   difficulty: DifficultyLevel;
   userLevel?: number;
   environmentHint?: 'park' | 'urban' | 'forest' | 'neighborhood' | 'any';
+  providerOverride?: 'demo' | 'gemma' | string;
 }
 
 export interface Evidence {
@@ -58,6 +64,7 @@ export interface EvidenceRequest {
   questId: string;
   objective: QuestObjective;
   evidence: Evidence;
+  providerOverride?: 'demo' | 'gemma' | string;
 }
 
 export interface EvidenceResult {
@@ -67,6 +74,8 @@ export interface EvidenceResult {
   feedback: string;
   xpAwarded: number;
   naturalistInsight?: string;
+  status?: 'completed' | 'incomplete' | 'inconclusive';
+  model?: string;
 }
 
 export type QuestSessionStatus =
@@ -104,6 +113,10 @@ export interface JournalEntry {
   xp: number;
   category: string;
   location?: string;
+  aiMetadata?: {
+    provider: string;
+    model: string;
+  };
 }
 
 export interface Badge {
@@ -129,8 +142,22 @@ export interface UserProgress {
 
 export interface AppSettings {
   aiProvider: 'demo' | 'gemma' | 'custom';
+  gemmaModel?: string;
+  gemmaApiUrl?: string;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   highContrast: boolean;
   offlineMode: boolean;
 }
+
+export interface AIHealthStatus {
+  ok: boolean;
+  provider: 'demo' | 'gemma' | 'custom' | string;
+  model: string;
+  endpoint?: string;
+  availableModels?: string[];
+  latencyMs?: number;
+  message: string;
+  isMultimodal?: boolean;
+}
+

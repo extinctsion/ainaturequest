@@ -154,9 +154,16 @@ export default function NatureJournalPage() {
               <div className="space-y-3 flex-1">
                 {/* Header Tag & XP */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 px-2 py-0.5 bg-emerald-900/10 dark:bg-emerald-400/10 rounded-md">
-                    {entry.category || 'Field Note'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 px-2 py-0.5 bg-emerald-900/10 dark:bg-emerald-400/10 rounded-md">
+                      {entry.category || 'Field Note'}
+                    </span>
+                    {entry.aiMetadata && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 px-1.5 py-0.5 bg-stone-200/60 dark:bg-stone-800 rounded">
+                        {entry.aiMetadata.provider === 'gemma' ? 'Gemma 3' : 'Demo AI'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs font-black text-amber-500">
                     +{entry.xp} XP
                   </span>
